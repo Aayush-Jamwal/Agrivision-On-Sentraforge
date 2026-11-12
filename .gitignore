@@ -160,6 +160,9 @@ checkpoints/
 .env.*
 !.env.example
 
+# Internal Documentation (Excluded from public repo)
+MIGRATION_GUIDE.md
+
 # OS artifacts
 .DS_Store
 Thumbs.db
