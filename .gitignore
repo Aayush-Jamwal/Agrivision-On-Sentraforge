@@ -162,6 +162,7 @@ checkpoints/
 
 # Internal Documentation (Excluded from public repo)
 MIGRATION_GUIDE.md
+HOW_IT_WORKS.md
 
 # OS artifacts
 .DS_Store
