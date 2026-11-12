@@ -272,12 +272,18 @@ crop_display_mapping = {
     "Other": "Other / अन्य"
 }
 
-def translate_to_hindi(text: str, api_key: str) -> str:
-    if not api_key or not text:
+def translate_to_hindi(text: str, api_key: str = None) -> str:
+    if not text:
         return text
     try:
-        from google import genai
-        client = genai.Client(api_key=api_key)
+        from openai import OpenAI
+        gateway_url = os.getenv("GATEWAY_URL", "http://localhost:8080/v1")
+        gateway_api_key = api_key or os.getenv("GATEWAY_API_KEY", "agrivision-sovereign-key-2026")
+        client = OpenAI(
+            base_url=gateway_url,
+            api_key=gateway_api_key,
+            default_headers={"X-API-Key": gateway_api_key}
+        )
         prompt = (
             "You are a professional Hindi translator specializing in agriculture. "
             "Translate the following agricultural diagnosis, treatment details, or markdown playbook into clear, simple Hindi (Devanagari script) "
@@ -286,11 +292,12 @@ def translate_to_hindi(text: str, api_key: str) -> str:
             "Return ONLY the translated Hindi content:\n\n"
             f"{text}"
         )
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
+        response = client.chat.completions.create(
+            model=os.getenv("VLLM_MODEL", "meta-llama/Llama-3.1-8B-Instruct"),
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
         )
-        return response.text.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         return f"{text}\n\n*(अनुवाद त्रुटि / Translation Error: {str(e)})*"
 
@@ -633,9 +640,11 @@ if "farmer_name" not in st.session_state:
 if "location_info" not in st.session_state:
     st.session_state.location_info = "North plot, Lat: 37.7749, Long: -122.4194 (Phone: +1-555-987-6543)"
 if "execution_mode" not in st.session_state:
-    st.session_state.execution_mode = "Production (API)" if os.getenv("GEMINI_API_KEY", "").strip() else "Simulation (Mock API)"
-if "gemini_key" not in st.session_state:
-    st.session_state.gemini_key = ""
+    st.session_state.execution_mode = "Production (API)" if os.getenv("GATEWAY_API_KEY", "").strip() else "Simulation (Mock API)"
+if "gateway_key" not in st.session_state:
+    st.session_state.gateway_key = os.getenv("GATEWAY_API_KEY", "agrivision-sovereign-key-2026")
+if "gateway_url" not in st.session_state:
+    st.session_state.gateway_url = os.getenv("GATEWAY_URL", "http://localhost:8080/v1")
 
 # Quick launch template presets
 demo_scenarios = {
@@ -801,22 +810,28 @@ with panel_right:
             img.save(img_byte_arr, format='JPEG')
             image_bytes = img_byte_arr.getvalue()
 
-        # Determine API key for translation (either env var or manual session state input)
-        api_key = os.getenv("GEMINI_API_KEY", "") or st.session_state.gemini_key
+        # Determine API key / gateway key
+        api_key = os.getenv("GATEWAY_API_KEY", "") or st.session_state.gateway_key
 
         # Preprocess symptoms if in Hindi mode to support Hindi symptoms inputs
         pipeline_symptoms = st.session_state.symptoms
         if st.session_state.language == "Hindi":
             if st.session_state.execution_mode == "Production (API)" and api_key:
                 try:
-                    from google import genai
-                    client = genai.Client(api_key=api_key)
-                    translate_prompt = f"Translate the following farmer's symptom description in Hindi into clear agricultural English. Only return the English translation:\n\n{st.session_state.symptoms}"
-                    resp = client.models.generate_content(
-                        model='gemini-2.5-flash',
-                        contents=translate_prompt,
+                    from openai import OpenAI
+                    gateway_url = os.getenv("GATEWAY_URL", "http://localhost:8080/v1")
+                    client = OpenAI(
+                        base_url=gateway_url,
+                        api_key=api_key,
+                        default_headers={"X-API-Key": api_key}
                     )
-                    pipeline_symptoms = resp.text.strip()
+                    translate_prompt = f"Translate the following farmer's symptom description in Hindi into clear agricultural English. Only return the English translation:\n\n{st.session_state.symptoms}"
+                    resp = client.chat.completions.create(
+                        model=os.getenv("VLLM_MODEL", "meta-llama/Llama-3.1-8B-Instruct"),
+                        messages=[{"role": "user", "content": translate_prompt}],
+                        temperature=0.2
+                    )
+                    pipeline_symptoms = resp.choices[0].message.content.strip()
                 except Exception:
                     pass
             
@@ -856,8 +871,8 @@ with panel_right:
         with st.spinner(TRANSLATIONS[st.session_state.language]["spinner_agent3"]):
             time.sleep(0.8)
             
-        # Determine API key for translation (either env var or manual session state input)
-        api_key = os.getenv("GEMINI_API_KEY", "") or st.session_state.gemini_key
+        # Determine API key / gateway key
+        api_key = os.getenv("GATEWAY_API_KEY", "") or st.session_state.gateway_key
 
         # Render Executive Top-Row Metrics & Badges inside miniature cards
         st.markdown(f"<h5 style='font-family:Montserrat; font-weight:700; margin-top:15px; margin-bottom:10px; color:#0F172A;'>{TRANSLATIONS[st.session_state.language]['audits_header']}</h5>", unsafe_allow_html=True)
@@ -1031,39 +1046,39 @@ with panel_right:
 
 # ----------------- MAIN PAGE FOOTER: CREDENTIALS & PRIVACY EXPANDER -----------------
 st.markdown("<div style='margin-top: 40px;'></div>", unsafe_allow_html=True)
-with st.expander("⚙️ System Audit & Privacy Logs"):
-    api_key_env = os.getenv("GEMINI_API_KEY", "")
-    has_env_key = len(api_key_env.strip()) > 0
+with st.expander("⚙️ Sovereign Gateway & Security Audit"):
+    gateway_url_env = os.getenv("GATEWAY_URL", "http://localhost:8080/v1")
+    gateway_key_env = os.getenv("GATEWAY_API_KEY", "agrivision-sovereign-key-2026")
     
     col_f1, col_f2, col_f3 = st.columns(3)
     with col_f1:
-        st.markdown("<b>🛠️ API Credentials Configuration:</b>", unsafe_allow_html=True)
-        
-        # Bind the select execution mode to session state via key to prevent state lag
+        st.markdown("<b>🛡️ Sovereign Gateway Configuration:</b>", unsafe_allow_html=True)
         st.radio(
             "Select Execution Mode",
             options=["Production (API)", "Simulation (Mock API)"],
-            index=0 if has_env_key else 1,
+            index=0 if gateway_key_env else 1,
             horizontal=True,
             key="execution_mode"
         )
-        
         if st.session_state.execution_mode == "Production (API)":
-            st.session_state.gemini_key = st.text_input("Input Gemini API Key", type="password", value=st.session_state.gemini_key or api_key_env)
-            if st.session_state.gemini_key:
-                os.environ["GEMINI_API_KEY"] = st.session_state.gemini_key
+            st.session_state.gateway_url = st.text_input("FastAPI Gateway URL", value=st.session_state.gateway_url or gateway_url_env, help="Port 8080 Sovereign Gateway endpoint")
+            st.session_state.gateway_key = st.text_input("Gateway X-API-Key", type="password", value=st.session_state.gateway_key or gateway_key_env)
+            if st.session_state.gateway_key:
+                os.environ["GATEWAY_API_KEY"] = st.session_state.gateway_key
+            if st.session_state.gateway_url:
+                os.environ["GATEWAY_URL"] = st.session_state.gateway_url
                 
     with col_f2:
-        st.markdown("<b>👤 Farmer Metadata (PII Audit Fields):</b>", unsafe_allow_html=True)
+        st.markdown("<b>👤 Farmer Metadata (PII Test Fields):</b>", unsafe_allow_html=True)
         st.text_input("Farmer Name", key="farmer_name", help="Simulate inputting real farmer name to test automated PII scrubbing.")
         st.text_input("Coordinates / Location Context", key="location_info", help="Simulate inputting real contact or coordinate information.")
         
     with col_f3:
-        st.markdown("<b>🔒 Shift-Left Automated Redaction Rules:</b>", unsafe_allow_html=True)
+        st.markdown("<b>🔒 Sovereign Security & Redaction Stack:</b>", unsafe_allow_html=True)
         st.markdown("""
-        - Emails matching standard domain anchors ➔ `[REDACTED_EMAIL]`
-        - Telephone numbers matching standard country codes ➔ `[REDACTED_PHONE]`
-        - Geolocation coordinates containing Latitude/Longitude ➔ `[REDACTED_COORDINATES]`
-        - Farmer/Owner explicit names in input lines ➔ `[REDACTED_NAME]`
+        - **Gateway Port**: `8080` (FastAPI Proxy ➔ vLLM: `8000`)
+        - **Rate Limiting**: `60 req/min` via SlowAPI
+        - **Indian PII Redaction**: Aadhaar, 10-digit Mobile, Emails
+        - **Guided Decoding**: Pydantic JSON enforcement via vLLM
         """)
-        st.info("Verification: All inputs undergo regex cleansing prior to model transit.")
+        st.info("Verification: All inputs undergo Indian PII sanitization at Gateway before vLLM ingress.")

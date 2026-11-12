@@ -144,3 +144,24 @@ cython_debug/
 # Local Kaggle writeup media (Strictly offline)
 kaggle_writeup_media/
 
+# Model Weights & Large Checkpoints (Local vLLM / HuggingFace)
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.gguf
+*.onnx
+models/
+weights/
+checkpoints/
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
