@@ -114,8 +114,8 @@ AgriVision-Disease-Guard/
 
 ### Step 1: Clone the Repository & Install Dependencies
 ```bash
-git clone https://github.com/Aayush-Jamwal/AgriVision-Disease-Guard.git
-cd AgriVision-Disease-Guard
+git clone https://github.com/Aayush-Jamwal/Agrivision-On-Sentraforge.git
+cd Agrivision-On-Sentraforge
 
 # Install dependencies
 pip install -r requirements.txt
